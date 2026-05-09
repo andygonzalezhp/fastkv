@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -37,13 +38,22 @@ func (s *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
+
+	return s.Serve(listener)
+}
+
+func (s *Server) Serve(listener net.Listener) error {
 	defer listener.Close()
 
-	log.Printf("FastKV server listening on %s\n", s.addr)
+	log.Printf("FastKV server listening on %s\n", listener.Addr().String())
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+
 			log.Printf("failed to accept connection: %v\n", err)
 			continue
 		}
