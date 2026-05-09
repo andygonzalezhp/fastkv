@@ -49,6 +49,11 @@ func (s *Store) Get(key string) (string, bool) {
 	return entry.Value, true
 }
 
+func (s *Store) Exists(key string) bool {
+	_, ok := s.Get(key)
+	return ok
+}
+
 func (s *Store) Delete(key string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -62,6 +67,11 @@ func (s *Store) Delete(key string) bool {
 }
 
 func (s *Store) Expire(key string, ttlSeconds int) bool {
+	expiresAt := time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	return s.ExpireAt(key, expiresAt)
+}
+
+func (s *Store) ExpireAt(key string, expiresAt time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -70,7 +80,7 @@ func (s *Store) Expire(key string, ttlSeconds int) bool {
 		return false
 	}
 
-	entry.ExpiresAt = time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+	entry.ExpiresAt = expiresAt
 	entry.HasExpiry = true
 
 	s.data[key] = entry

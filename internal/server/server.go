@@ -7,19 +7,23 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/andygonzalezhp/fastkv/internal/store"
+	"github.com/andygonzalezhp/fastkv/internal/wal"
 )
 
 type Server struct {
 	addr  string
 	store *store.Store
+	wal   *wal.WAL
 }
 
-func NewServer(addr string, store *store.Store) *Server {
+func NewServer(addr string, store *store.Store, writeAheadLog *wal.WAL) *Server {
 	return &Server{
 		addr:  addr,
 		store: store,
+		wal:   writeAheadLog,
 	}
 }
 
@@ -83,6 +87,10 @@ func (s *Server) handleCommand(line string) string {
 		key := parts[1]
 		value := parts[2]
 
+		if err := s.wal.Append(fmt.Sprintf("SET %s %s", key, value)); err != nil {
+			return "ERR failed to persist command"
+		}
+
 		s.store.Set(key, value)
 		return "OK"
 
@@ -107,17 +115,16 @@ func (s *Server) handleCommand(line string) string {
 
 		key := parts[1]
 
-		if s.store.Delete(key) {
-			return "1"
+		if !s.store.Exists(key) {
+			return "0"
 		}
 
-		return "0"
+		if err := s.wal.Append(fmt.Sprintf("DEL %s", key)); err != nil {
+			return "ERR failed to persist command"
+		}
 
-	case "QUIT", "EXIT":
-		return "BYE"
-
-	default:
-		return "ERR unknown command"
+		s.store.Delete(key)
+		return "1"
 
 	case "EXPIRE":
 		if len(parts) < 3 {
@@ -131,11 +138,18 @@ func (s *Server) handleCommand(line string) string {
 			return "ERR seconds must be a positive integer"
 		}
 
-		if s.store.Expire(key, ttlSeconds) {
-			return "1"
+		if !s.store.Exists(key) {
+			return "0"
 		}
 
-		return "0"
+		expiresAt := time.Now().Add(time.Duration(ttlSeconds) * time.Second)
+
+		if err := s.wal.Append(fmt.Sprintf("EXPIREAT %s %d", key, expiresAt.UnixNano())); err != nil {
+			return "ERR failed to persist command"
+		}
+
+		s.store.ExpireAt(key, expiresAt)
+		return "1"
 
 	case "TTL":
 		if len(parts) < 2 {
@@ -149,5 +163,11 @@ func (s *Server) handleCommand(line string) string {
 
 	case "DBSIZE":
 		return strconv.Itoa(s.store.Size())
+
+	case "QUIT", "EXIT":
+		return "BYE"
+
+	default:
+		return "ERR unknown command"
 	}
 }
