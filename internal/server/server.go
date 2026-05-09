@@ -146,5 +146,8 @@ func (s *Server) handleCommand(line string) string {
 
 		ttl, _ := s.store.TTL(key)
 		return strconv.Itoa(ttl)
+
+	case "DBSIZE":
+		return strconv.Itoa(s.store.Size())
 	}
 }

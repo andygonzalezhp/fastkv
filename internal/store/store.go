@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -100,4 +101,46 @@ func (s *Store) TTL(key string) (int, bool) {
 	}
 
 	return remaining, true
+}
+
+func (s *Store) Size() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return len(s.data)
+}
+
+func (s *Store) DeleteExpired() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	deleted := 0
+
+	for key, entry := range s.data {
+		if entry.HasExpiry && now.After(entry.ExpiresAt) {
+			delete(s.data, key)
+			deleted++
+		}
+	}
+
+	return deleted
+}
+
+func (s *Store) StartExpirationWorker(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+
+	go func() {
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				s.DeleteExpired()
+
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }
