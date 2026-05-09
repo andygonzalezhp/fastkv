@@ -22,3 +22,18 @@ docker-build:
 
 docker-run:
 	docker run --rm -p 6380:6380 $(APP_NAME)
+
+bench-get:
+	go run ./cmd/bench -mode=get -clients=50 -ops=1000 -keyspace=1000
+
+bench-set:
+	go run ./cmd/bench -mode=set -clients=50 -ops=1000 -keyspace=1000
+
+bench-mixed:
+	go run ./cmd/bench -mode=mixed -clients=50 -ops=1000 -keyspace=1000
+
+bench-set-fast:
+	go run ./cmd/bench -mode=set -clients=50 -ops=1000 -keyspace=1000
+
+run-fast:
+	go run ./cmd/fastkv -sync-policy=none

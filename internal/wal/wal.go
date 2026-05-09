@@ -13,15 +13,31 @@ import (
 	"github.com/andygonzalezhp/fastkv/internal/store"
 )
 
+type SyncPolicy string
+
+const (
+	SyncAlways SyncPolicy = "always"
+	SyncNone   SyncPolicy = "none"
+)
+
 type WAL struct {
-	mu   sync.Mutex
-	file *os.File
-	path string
+	mu         sync.Mutex
+	file       *os.File
+	path       string
+	syncPolicy SyncPolicy
 }
 
-func Open(path string) (*WAL, error) {
+func Open(path string, syncPolicy SyncPolicy) (*WAL, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return nil, err
+	}
+
+	if syncPolicy == "" {
+		syncPolicy = SyncAlways
+	}
+
+	if syncPolicy != SyncAlways && syncPolicy != SyncNone {
+		return nil, fmt.Errorf("invalid sync policy: %s", syncPolicy)
 	}
 
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
@@ -30,8 +46,9 @@ func Open(path string) (*WAL, error) {
 	}
 
 	return &WAL{
-		file: file,
-		path: path,
+		file:       file,
+		path:       path,
+		syncPolicy: syncPolicy,
 	}, nil
 }
 
@@ -43,10 +60,36 @@ func (w *WAL) Append(line string) error {
 		return err
 	}
 
+	if w.syncPolicy == SyncAlways {
+		return w.file.Sync()
+	}
+
+	return nil
+}
+
+func (w *WAL) Truncate() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.file.Truncate(0); err != nil {
+		return err
+	}
+
+	if _, err := w.file.Seek(0, 0); err != nil {
+		return err
+	}
+
 	return w.file.Sync()
 }
 
 func (w *WAL) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.file.Sync(); err != nil {
+		return err
+	}
+
 	return w.file.Close()
 }
 
@@ -124,19 +167,4 @@ func applyLine(line string, s *store.Store) error {
 	}
 
 	return nil
-}
-
-func (w *WAL) Truncate() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if err := w.file.Truncate(0); err != nil {
-		return err
-	}
-
-	if _, err := w.file.Seek(0, 0); err != nil {
-		return err
-	}
-
-	return w.file.Sync()
 }

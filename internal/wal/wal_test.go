@@ -12,7 +12,7 @@ import (
 func TestWALReplayReconstructsStore(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.wal")
 
-	w, err := Open(path)
+	w, err := Open(path, SyncAlways)
 	if err != nil {
 		t.Fatalf("failed to open WAL: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestWALReplayReconstructsStore(t *testing.T) {
 func TestWALReplayWithExpiry(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test-expiry.wal")
 
-	w, err := Open(path)
+	w, err := Open(path, SyncAlways)
 	if err != nil {
 		t.Fatalf("failed to open WAL: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestWALReplayWithExpiry(t *testing.T) {
 func TestWALReplayDeletesExpiredKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test-expired.wal")
 
-	w, err := Open(path)
+	w, err := Open(path, SyncAlways)
 	if err != nil {
 		t.Fatalf("failed to open WAL: %v", err)
 	}
