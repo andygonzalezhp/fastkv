@@ -17,12 +17,13 @@ func main() {
 	walPath := flag.String("wal", "data/fastkv.wal", "path to write-ahead log file")
 	snapshotPath := flag.String("snapshot", "data/fastkv.snapshot", "path to snapshot file")
 	syncPolicy := flag.String("sync-policy", "always", "WAL sync policy: always or none")
+	maxKeys := flag.Int("max-keys", 0, "maximum number of keys before LRU eviction; 0 means unlimited")
 	flag.Parse()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kvStore := store.NewStore()
+	kvStore := store.NewStoreWithMaxKeys(*maxKeys)
 
 	if err := snapshot.Load(*snapshotPath, kvStore); err != nil {
 		log.Fatalf("failed to load snapshot: %v", err)

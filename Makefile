@@ -37,3 +37,6 @@ bench-set-fast:
 
 run-fast:
 	go run ./cmd/fastkv -sync-policy=none
+
+run-lru:
+	go run ./cmd/fastkv -max-keys=3

@@ -178,6 +178,22 @@ func (s *Server) handleCommand(line string) string {
 	case "DBSIZE":
 		return strconv.Itoa(s.store.Size())
 
+	case "STATS":
+		stats := s.store.Stats()
+
+		maxKeys := strconv.Itoa(stats.MaxKeys)
+		if stats.MaxKeys == 0 {
+			maxKeys = "unlimited"
+		}
+
+		return fmt.Sprintf(
+			"keys=%d max_keys=%s eviction_policy=%s evictions=%d",
+			stats.Keys,
+			maxKeys,
+			stats.EvictionPolicy,
+			stats.Evictions,
+		)
+
 	case "SAVE":
 		s.mu.Lock()
 		defer s.mu.Unlock()
