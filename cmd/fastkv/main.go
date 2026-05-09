@@ -4,6 +4,10 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/andygonzalezhp/fastkv/internal/server"
@@ -37,13 +41,52 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to open WAL: %v", err)
 	}
-	defer writeAheadLog.Close()
 
 	kvStore.StartExpirationWorker(ctx, 1*time.Second)
 
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		log.Fatalf("failed to listen on %s: %v", *addr, err)
+	}
+
 	srv := server.NewServer(*addr, kvStore, writeAheadLog, *snapshotPath)
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("server error: %v", err)
+	serverErrors := make(chan error, 1)
+
+	go func() {
+		serverErrors <- srv.Serve(listener)
+	}()
+
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Printf("FastKV ready on %s\n", listener.Addr().String())
+
+	select {
+	case <-signalCtx.Done():
+		log.Println("shutdown signal received")
+
+		cancel()
+
+		if err := listener.Close(); err != nil {
+			log.Printf("failed to close listener: %v\n", err)
+		}
+
+		if err := writeAheadLog.Close(); err != nil {
+			log.Printf("failed to close WAL: %v\n", err)
+		}
+
+		log.Println("FastKV shut down cleanly")
+
+	case err := <-serverErrors:
+		cancel()
+
+		if closeErr := writeAheadLog.Close(); closeErr != nil {
+			log.Printf("failed to close WAL: %v\n", closeErr)
+		}
+
+		if err != nil {
+			log.Fatalf("server error: %v", err)
+		}
 	}
 }
