@@ -154,3 +154,37 @@ func (s *Store) StartExpirationWorker(ctx context.Context, interval time.Duratio
 		}
 	}()
 }
+
+func (s *Store) Snapshot() map[string]Entry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	now := time.Now()
+	entries := make(map[string]Entry, len(s.data))
+
+	for key, entry := range s.data {
+		if entry.HasExpiry && now.After(entry.ExpiresAt) {
+			continue
+		}
+
+		entries[key] = entry
+	}
+
+	return entries
+}
+
+func (s *Store) Load(entries map[string]Entry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	s.data = make(map[string]Entry, len(entries))
+
+	for key, entry := range entries {
+		if entry.HasExpiry && now.After(entry.ExpiresAt) {
+			continue
+		}
+
+		s.data[key] = entry
+	}
+}

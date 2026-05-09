@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,9 +16,14 @@ import (
 type WAL struct {
 	mu   sync.Mutex
 	file *os.File
+	path string
 }
 
 func Open(path string) (*WAL, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return nil, err
+	}
+
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, err
@@ -25,6 +31,7 @@ func Open(path string) (*WAL, error) {
 
 	return &WAL{
 		file: file,
+		path: path,
 	}, nil
 }
 
@@ -117,4 +124,19 @@ func applyLine(line string, s *store.Store) error {
 	}
 
 	return nil
+}
+
+func (w *WAL) Truncate() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.file.Truncate(0); err != nil {
+		return err
+	}
+
+	if _, err := w.file.Seek(0, 0); err != nil {
+		return err
+	}
+
+	return w.file.Sync()
 }

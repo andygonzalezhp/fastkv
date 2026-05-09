@@ -7,23 +7,28 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/andygonzalezhp/fastkv/internal/snapshot"
 	"github.com/andygonzalezhp/fastkv/internal/store"
 	"github.com/andygonzalezhp/fastkv/internal/wal"
 )
 
 type Server struct {
-	addr  string
-	store *store.Store
-	wal   *wal.WAL
+	addr         string
+	store        *store.Store
+	wal          *wal.WAL
+	snapshotPath string
+	mu           sync.Mutex
 }
 
-func NewServer(addr string, store *store.Store, writeAheadLog *wal.WAL) *Server {
+func NewServer(addr string, store *store.Store, writeAheadLog *wal.WAL, snapshotPath string) *Server {
 	return &Server{
-		addr:  addr,
-		store: store,
-		wal:   writeAheadLog,
+		addr:         addr,
+		store:        store,
+		wal:          writeAheadLog,
+		snapshotPath: snapshotPath,
 	}
 }
 
@@ -87,6 +92,9 @@ func (s *Server) handleCommand(line string) string {
 		key := parts[1]
 		value := parts[2]
 
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
 		if err := s.wal.Append(fmt.Sprintf("SET %s %s", key, value)); err != nil {
 			return "ERR failed to persist command"
 		}
@@ -115,6 +123,9 @@ func (s *Server) handleCommand(line string) string {
 
 		key := parts[1]
 
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
 		if !s.store.Exists(key) {
 			return "0"
 		}
@@ -137,6 +148,9 @@ func (s *Server) handleCommand(line string) string {
 		if err != nil || ttlSeconds <= 0 {
 			return "ERR seconds must be a positive integer"
 		}
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
 
 		if !s.store.Exists(key) {
 			return "0"
@@ -163,6 +177,22 @@ func (s *Server) handleCommand(line string) string {
 
 	case "DBSIZE":
 		return strconv.Itoa(s.store.Size())
+
+	case "SAVE":
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		s.store.DeleteExpired()
+
+		if err := snapshot.Save(s.snapshotPath, s.store); err != nil {
+			return "ERR failed to save snapshot"
+		}
+
+		if err := s.wal.Truncate(); err != nil {
+			return "ERR failed to truncate WAL"
+		}
+
+		return "OK"
 
 	case "QUIT", "EXIT":
 		return "BYE"
