@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/andygonzalezhp/fastkv/internal/store"
@@ -117,5 +118,33 @@ func (s *Server) handleCommand(line string) string {
 
 	default:
 		return "ERR unknown command"
+
+	case "EXPIRE":
+		if len(parts) < 3 {
+			return "ERR usage: EXPIRE <key> <seconds>"
+		}
+
+		key := parts[1]
+
+		ttlSeconds, err := strconv.Atoi(parts[2])
+		if err != nil || ttlSeconds <= 0 {
+			return "ERR seconds must be a positive integer"
+		}
+
+		if s.store.Expire(key, ttlSeconds) {
+			return "1"
+		}
+
+		return "0"
+
+	case "TTL":
+		if len(parts) < 2 {
+			return "ERR usage: TTL <key>"
+		}
+
+		key := parts[1]
+
+		ttl, _ := s.store.TTL(key)
+		return strconv.Itoa(ttl)
 	}
 }
